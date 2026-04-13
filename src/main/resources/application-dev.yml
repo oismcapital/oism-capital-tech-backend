@@ -1,0 +1,8 @@
+# Perfil dev — sobrescreve apenas o que for diferente do application.yml base
+logging:
+  level:
+    root: INFO
+    com.oism.capitaltech: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE

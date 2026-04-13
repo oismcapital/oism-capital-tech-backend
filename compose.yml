@@ -1,0 +1,47 @@
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: oism-capital-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: oism_capital_tech
+      POSTGRES_USER: oismdm
+      POSTGRES_PASSWORD: oismdm2026*
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: "--auth-host=md5"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d oism_capital"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: oism-capital-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:postgresql://postgres:5432/oism_capital_tech
+      DB_USERNAME: oismdm
+      DB_PASSWORD: oismdm2026*
+      JWT_SECRET: change-this-secret-change-this-secret-123456
+      JWT_EXPIRATION_MS: 86400000
+      PIX_BANK_API_URL: https://api.efipay.com.br/v2
+      PIX_WEBHOOK_SECRET: webhook-secret
+    ports:
+      - "8080:8080"
+    profiles:
+      - full
+
+volumes:
+  postgres_data:

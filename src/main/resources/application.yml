@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: capitaltech-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/oism_capital_tech}
+    username: ${DB_USERNAME:oismdm}
+    password: ${DB_PASSWORD:oismdm2026*}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: 20000
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: false
+    open-in-view: false
+  jackson:
+    time-zone: America/Sao_Paulo
+
+server:
+  port: ${SERVER_PORT:8080}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:Y2hhbmdlLXRoaXMtc2VjcmV0LWNoYW5nZS10aGlzLXNlY3JldC0xMjM0NTY=}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  pix:
+    bank-api-url: ${PIX_BANK_API_URL:https://api.efipay.com.br/v2}
+    webhook-secret: ${PIX_WEBHOOK_SECRET:webhook-secret}
+
+logging:
+  level:
+    root: INFO
+    com.oism.capitaltech: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: OFF
