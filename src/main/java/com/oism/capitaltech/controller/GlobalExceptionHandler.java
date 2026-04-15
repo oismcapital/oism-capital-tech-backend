@@ -1,6 +1,7 @@
 package com.oism.capitaltech.controller;
 
 import com.oism.capitaltech.service.AuthService;
+import com.oism.capitaltech.service.PaymentService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -18,6 +19,12 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(PaymentService.PlanNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handlePlanNotFound(PaymentService.PlanNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", ex.getMessage()));
+    }
 
     @ExceptionHandler(AuthService.UserNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleUserNotFound(AuthService.UserNotFoundException ex) {
