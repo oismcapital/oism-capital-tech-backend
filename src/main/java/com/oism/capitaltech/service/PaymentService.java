@@ -138,13 +138,25 @@ public class PaymentService {
 
     @Transactional
     public void confirmPayment(String transactionId) {
-        PixDeposit deposit = pixDepositRepository
-                .findByTransactionIdAndStatus(transactionId, DepositStatus.PENDING)
+        PixDeposit deposit = pixDepositRepository.findByTransactionId(transactionId)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "Transação não encontrada ou já processada: " + transactionId));
+                        "Transação não encontrada: " + transactionId));
 
-        deposit.setStatus(DepositStatus.COMPLETED);
-        deposit.setCompletedAt(Instant.now());
+        if (deposit.isBalanceCredited()) {
+            log.info("Deposit {} already processed", transactionId);
+            return;
+        }
+
+        if (deposit.getStatus() == DepositStatus.EXPIRED) {
+            throw new IllegalArgumentException("Transação expirada: " + transactionId);
+        }
+
+        if (deposit.getStatus() != DepositStatus.COMPLETED) {
+            deposit.setStatus(DepositStatus.COMPLETED);
+            deposit.setCompletedAt(Instant.now());
+        }
+
+        deposit.setBalanceCredited(true);
         pixDepositRepository.save(deposit);
 
         userService.creditBalance(

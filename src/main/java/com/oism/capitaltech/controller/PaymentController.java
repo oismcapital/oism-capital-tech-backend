@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/payments")
@@ -44,6 +45,16 @@ public class PaymentController {
     @GetMapping("/{transactionId}/status")
     public ResponseEntity<DepositStatusResponse> status(@PathVariable String transactionId) {
         return ResponseEntity.ok(paymentService.getStatus(transactionId));
+    }
+
+    /**
+     * Confirma manualmente um pagamento Pix (usado por webhook ou testes).
+     * POST /api/v1/payments/{transactionId}/confirm
+     */
+    @PostMapping("/{transactionId}/confirm")
+    public ResponseEntity<Map<String, String>> confirm(@PathVariable String transactionId) {
+        paymentService.confirmPayment(transactionId);
+        return ResponseEntity.ok(Map.of("message", "Pagamento confirmado com sucesso"));
     }
 
     /**

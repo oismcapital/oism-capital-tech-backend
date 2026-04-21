@@ -56,6 +56,10 @@ public class PixDeposit {
     @Column
     private Instant completedAt;
 
+    /** Indicates whether the wallet balance has been credited after PIX confirmation. */
+    @Column(nullable = false)
+    private boolean balanceCredited = false;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -88,4 +92,7 @@ public class PixDeposit {
 
     public Instant getCompletedAt() { return completedAt; }
     public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }
+
+    public boolean isBalanceCredited() { return balanceCredited; }
+    public void setBalanceCredited(boolean balanceCredited) { this.balanceCredited = balanceCredited; }
 }
