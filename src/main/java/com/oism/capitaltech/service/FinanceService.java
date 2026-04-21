@@ -4,15 +4,22 @@ import com.oism.capitaltech.dto.FinanceSummaryResponse;
 import com.oism.capitaltech.entity.Investment;
 import com.oism.capitaltech.entity.InvestmentStatus;
 import com.oism.capitaltech.entity.User;
+import com.oism.capitaltech.entity.WalletTransaction;
+import com.oism.capitaltech.entity.WalletTransactionType;
 import com.oism.capitaltech.repository.InvestmentRepository;
+import com.oism.capitaltech.repository.WalletTransactionRepository;
 import com.oism.capitaltech.security.SecurityCurrentUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.ZoneId;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class FinanceService {
@@ -20,13 +27,16 @@ public class FinanceService {
     private final UserService userService;
     private final SecurityCurrentUser securityCurrentUser;
     private final InvestmentRepository investmentRepository;
+    private final WalletTransactionRepository walletTransactionRepository;
 
     public FinanceService(UserService userService,
                           SecurityCurrentUser securityCurrentUser,
-                          InvestmentRepository investmentRepository) {
+                          InvestmentRepository investmentRepository,
+                          WalletTransactionRepository walletTransactionRepository) {
         this.userService = userService;
         this.securityCurrentUser = securityCurrentUser;
         this.investmentRepository = investmentRepository;
+        this.walletTransactionRepository = walletTransactionRepository;
     }
 
     @Transactional(readOnly = true)
@@ -46,7 +56,8 @@ public class FinanceService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(4, RoundingMode.HALF_UP);
 
-        List<Double> points = parsePerformancePoints(user.getHistoricoRendimentoJSONB());
+        // Build performance chart from real accrued interest per investment (last 30 days)
+        List<Double> points = buildPerformancePoints(user.getId(), active);
 
         return new FinanceSummaryResponse(
                 user.getSaldo(),
@@ -58,48 +69,48 @@ public class FinanceService {
         );
     }
 
-    private List<Double> parsePerformancePoints(String historicoJson) {
-        if (historicoJson == null || historicoJson.isBlank() || "[]".equals(historicoJson.trim())) {
-            return List.of();
-        }
-        try {
-            List<Double> points = new ArrayList<>();
-            String content = historicoJson.trim();
-            if (!content.startsWith("[")) return List.of();
-            content = content.substring(1, content.length() - 1).trim();
-            if (content.isEmpty()) return List.of();
+    /**
+     * Builds daily performance points from active investments.
+     * Each point represents the cumulative accrued interest for that day.
+     */
+    private List<Double> buildPerformancePoints(Long userId, List<Investment> active) {
+        if (active.isEmpty()) return List.of();
 
-            int depth = 0;
-            int start = 0;
-            for (int i = 0; i < content.length(); i++) {
-                char c = content.charAt(i);
-                if (c == '{') { if (depth == 0) start = i; depth++; }
-                else if (c == '}') {
-                    depth--;
-                    if (depth == 0) {
-                        String obj = content.substring(start, i + 1);
-                        Double val = extractValor(obj);
-                        if (val != null) points.add(val);
-                    }
-                }
-            }
-            return points;
-        } catch (Exception e) {
-            return List.of();
-        }
-    }
+        // Find the earliest contract start date (up to 30 days ago)
+        LocalDate today = LocalDate.now();
+        LocalDate earliest = active.stream()
+                .map(i -> i.getContractedAt().toLocalDate())
+                .min(LocalDate::compareTo)
+                .orElse(today);
 
-    private Double extractValor(String obj) {
-        int idx = obj.indexOf("\"valor\"");
-        if (idx < 0) return null;
-        int colon = obj.indexOf(':', idx);
-        if (colon < 0) return null;
-        int end = obj.indexOf('}', colon);
-        String raw = obj.substring(colon + 1, end).trim().replace(",", "").replace("\"", "");
-        try {
-            return Double.parseDouble(raw);
-        } catch (NumberFormatException e) {
-            return null;
+        // Limit to last 30 days
+        if (earliest.isBefore(today.minusDays(29))) {
+            earliest = today.minusDays(29);
         }
+
+        // Build day-by-day cumulative interest projection
+        // For each day from earliest to today, sum the accrued interest
+        // that would have been earned up to that day across all active investments
+        Map<LocalDate, Double> dailyAccrual = new LinkedHashMap<>();
+        LocalDate cursor = earliest;
+        while (!cursor.isAfter(today)) {
+            final LocalDate day = cursor;
+            double dayTotal = active.stream()
+                    .filter(inv -> !inv.getContractedAt().toLocalDate().isAfter(day))
+                    .mapToDouble(inv -> {
+                        // Days elapsed since contract start (capped at 30)
+                        long daysElapsed = java.time.temporal.ChronoUnit.DAYS.between(
+                                inv.getContractedAt().toLocalDate(), day);
+                        daysElapsed = Math.min(daysElapsed, 30);
+                        // Daily rate = 10% / 30
+                        double dailyRate = 0.10 / 30.0;
+                        return inv.getPrincipal().doubleValue() * dailyRate * daysElapsed;
+                    })
+                    .sum();
+            dailyAccrual.put(day, dayTotal);
+            cursor = cursor.plusDays(1);
+        }
+
+        return new ArrayList<>(dailyAccrual.values());
     }
 }
