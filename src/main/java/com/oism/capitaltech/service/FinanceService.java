@@ -1,11 +1,16 @@
 package com.oism.capitaltech.service;
 
 import com.oism.capitaltech.dto.FinanceSummaryResponse;
+import com.oism.capitaltech.entity.Investment;
+import com.oism.capitaltech.entity.InvestmentStatus;
 import com.oism.capitaltech.entity.User;
+import com.oism.capitaltech.repository.InvestmentRepository;
 import com.oism.capitaltech.security.SecurityCurrentUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,18 +19,39 @@ public class FinanceService {
 
     private final UserService userService;
     private final SecurityCurrentUser securityCurrentUser;
+    private final InvestmentRepository investmentRepository;
 
-    public FinanceService(UserService userService, SecurityCurrentUser securityCurrentUser) {
+    public FinanceService(UserService userService,
+                          SecurityCurrentUser securityCurrentUser,
+                          InvestmentRepository investmentRepository) {
         this.userService = userService;
         this.securityCurrentUser = securityCurrentUser;
+        this.investmentRepository = investmentRepository;
     }
 
     @Transactional(readOnly = true)
     public FinanceSummaryResponse getSummary() {
         User user = userService.getByEmail(securityCurrentUser.email());
+
+        List<Investment> active = investmentRepository
+                .findByUserIdAndStatusOrderByContractedAtDesc(user.getId(), InvestmentStatus.ACTIVE);
+
+        BigDecimal totalInvested = active.stream()
+                .map(Investment::getPrincipal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(4, RoundingMode.HALF_UP);
+
+        BigDecimal totalAccrued = active.stream()
+                .map(Investment::getAccruedInterest)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(4, RoundingMode.HALF_UP);
+
         List<Double> points = parsePerformancePoints(user.getHistoricoRendimentoJSONB());
+
         return new FinanceSummaryResponse(
                 user.getSaldo(),
+                totalInvested,
+                totalAccrued,
                 user.getLucroHoje(),
                 points,
                 user.isValorEscondido()

@@ -89,6 +89,11 @@ public class UserService {
 
     @Transactional
     public void debitBalance(Long userId, BigDecimal amount, Map<String, Object> metadata) {
+        debitBalance(userId, amount, WalletTransactionType.WITHDRAW, metadata);
+    }
+
+    @Transactional
+    public void debitBalance(Long userId, BigDecimal amount, WalletTransactionType type, Map<String, Object> metadata) {
         User user = getById(userId);
         BigDecimal before = user.getSaldo().setScale(4, RoundingMode.HALF_UP);
         BigDecimal debit = amount.setScale(4, RoundingMode.HALF_UP);
@@ -103,7 +108,7 @@ public class UserService {
 
         WalletTransaction t = new WalletTransaction();
         t.setUser(user);
-        t.setType(WalletTransactionType.WITHDRAW);
+        t.setType(type);
         t.setAmount(debit);
         t.setBalanceBefore(before);
         t.setBalanceAfter(after);

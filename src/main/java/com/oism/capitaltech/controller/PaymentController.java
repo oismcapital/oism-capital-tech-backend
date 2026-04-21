@@ -1,5 +1,7 @@
 package com.oism.capitaltech.controller;
 
+import com.oism.capitaltech.dto.DepositPixRequest;
+import com.oism.capitaltech.dto.DepositPixResponse;
 import com.oism.capitaltech.dto.DepositStatusResponse;
 import com.oism.capitaltech.dto.GeneratePixRequest;
 import com.oism.capitaltech.dto.GeneratePixResponse;
@@ -42,6 +44,16 @@ public class PaymentController {
     @GetMapping("/{transactionId}/status")
     public ResponseEntity<DepositStatusResponse> status(@PathVariable String transactionId) {
         return ResponseEntity.ok(paymentService.getStatus(transactionId));
+    }
+
+    /**
+     * Gera PIX de depósito livre (qualquer valor) → vai para o saldo da Wallet.
+     * POST /api/v1/payments/deposit-pix
+     * Body: { "valor": 150.00 }
+     */
+    @PostMapping("/deposit-pix")
+    public ResponseEntity<DepositPixResponse> depositPix(@Valid @RequestBody DepositPixRequest request) {
+        return ResponseEntity.ok(paymentService.generateDepositPix(request));
     }
 
     /**

@@ -25,7 +25,7 @@ server:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:Y2hhbmdlLXRoaXMtc2VjcmV0LWNoYW5nZS10aGlzLXNlY3JldC0xMjM0NTY=}
+    secret: ${JWT_SECRET:b2lzbWNhcGl0YWx0ZWNoc2VjcmV0a2V5Zm9yand0dG9rZW5zMjAyNnNlY3VyZQ==}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   pix:
     bank-api-url: ${PIX_BANK_API_URL:https://api.efipay.com.br/v2}

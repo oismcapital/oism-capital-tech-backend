@@ -1,6 +1,8 @@
 package com.oism.capitaltech.service;
 
 import com.oism.capitaltech.dto.DepositStatusResponse;
+import com.oism.capitaltech.dto.DepositPixRequest;
+import com.oism.capitaltech.dto.DepositPixResponse;
 import com.oism.capitaltech.dto.GeneratePixRequest;
 import com.oism.capitaltech.dto.GeneratePixResponse;
 import com.oism.capitaltech.entity.DepositStatus;
@@ -38,6 +40,41 @@ public class PaymentService {
         this.userService = userService;
         this.securityCurrentUser = securityCurrentUser;
         this.mockPixGateway = mockPixGateway;
+    }
+
+    @Transactional
+    public DepositPixResponse generateDepositPix(DepositPixRequest request) {
+        User user = userService.getByEmail(securityCurrentUser.email());
+
+        String transactionId = UUID.randomUUID().toString();
+        Instant expiresAt = Instant.now().plus(30, ChronoUnit.MINUTES);
+
+        MockPixGateway.PixPayload payload = mockPixGateway.generateDynamicQrCode(
+                transactionId, request.valor(), "Depósito OISM", user.getId()
+        );
+
+        PixDeposit deposit = new PixDeposit();
+        deposit.setTransactionId(transactionId);
+        deposit.setUser(user);
+        deposit.setAmount(request.valor().setScale(4, java.math.RoundingMode.HALF_UP));
+        deposit.setStatus(DepositStatus.PENDING);
+        deposit.setCopyAndPaste(payload.copyAndPaste());
+        deposit.setQrCodeBase64(payload.qrCodeBase64());
+        deposit.setExpiresAt(expiresAt);
+
+        pixDepositRepository.save(deposit);
+
+        log.info("Pix depósito gerado: transactionId={} userId={} amount={}",
+                transactionId, user.getId(), request.valor());
+
+        return new DepositPixResponse(
+                transactionId,
+                request.valor(),
+                payload.copyAndPaste(),
+                payload.qrCodeBase64(),
+                DepositStatus.PENDING.name(),
+                expiresAt.toString()
+        );
     }
 
     @Transactional
@@ -116,7 +153,7 @@ public class PaymentService {
                 WalletTransactionType.PIX_CREDIT,
                 Map.of(
                         "transactionId", transactionId,
-                        "plan", deposit.getPlan().name()
+                        "tipo", deposit.getPlan() != null ? deposit.getPlan().name() : "DEPOSITO_LIVRE"
                 )
         );
 

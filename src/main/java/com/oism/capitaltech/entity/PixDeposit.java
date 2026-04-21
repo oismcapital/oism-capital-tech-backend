@@ -31,7 +31,7 @@ public class PixDeposit {
     private User user;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
+    @Column(length = 16)
     private Plan plan;
 
     @Column(nullable = false, precision = 19, scale = 4)

@@ -13,7 +13,7 @@ public record DepositStatusResponse(
         return new DepositStatusResponse(
                 d.getTransactionId(),
                 d.getStatus().name(),
-                d.getPlan().getDisplayName(),
+                d.getPlan() != null ? d.getPlan().getDisplayName() : null,
                 d.getExpiresAt() != null ? d.getExpiresAt().toString() : null,
                 d.getCompletedAt() != null ? d.getCompletedAt().toString() : null
         );

@@ -64,14 +64,14 @@ public class JwtService {
     }
 
     private SecretKey getSigningKey() {
-        byte[] keyBytes;
-
-        try {
-            keyBytes = Decoders.BASE64.decode(jwtSecret);
-        } catch (IllegalArgumentException ignored) {
-            keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+        // Usa os bytes da string diretamente — compatível com qualquer formato de secret
+        byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+        // Garante tamanho mínimo de 256 bits para HMAC-SHA256
+        if (keyBytes.length < 32) {
+            byte[] padded = new byte[32];
+            System.arraycopy(keyBytes, 0, padded, 0, keyBytes.length);
+            keyBytes = padded;
         }
-
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }
