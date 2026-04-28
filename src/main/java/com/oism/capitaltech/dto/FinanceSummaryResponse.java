@@ -7,10 +7,11 @@ public record FinanceSummaryResponse(
         BigDecimal walletBalance,
         BigDecimal totalInvested,
         BigDecimal totalAccruedInterest,
+        BigDecimal withdrawableInterest,
+        BigDecimal withdrawableBalance,
         BigDecimal dailyProfit,
         List<Double> performancePoints,
         boolean valorEscondido
 ) {
-    // Mantém compatibilidade com código legado que usa investedBalance
     public BigDecimal investedBalance() { return walletBalance; }
 }

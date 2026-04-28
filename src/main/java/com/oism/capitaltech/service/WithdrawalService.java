@@ -2,10 +2,13 @@ package com.oism.capitaltech.service;
 
 import com.oism.capitaltech.dto.WithdrawalRequestDto;
 import com.oism.capitaltech.dto.WithdrawalResponse;
+import com.oism.capitaltech.entity.Investment;
+import com.oism.capitaltech.entity.InvestmentStatus;
 import com.oism.capitaltech.entity.User;
 import com.oism.capitaltech.entity.WalletTransactionType;
 import com.oism.capitaltech.entity.WithdrawalRequest;
 import com.oism.capitaltech.entity.WithdrawalStatus;
+import com.oism.capitaltech.repository.InvestmentRepository;
 import com.oism.capitaltech.repository.WithdrawalRequestRepository;
 import com.oism.capitaltech.security.SecurityCurrentUser;
 import org.slf4j.Logger;
@@ -13,8 +16,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -26,26 +31,39 @@ public class WithdrawalService {
     private final WithdrawalRequestRepository withdrawalRequestRepository;
     private final UserService userService;
     private final SecurityCurrentUser securityCurrentUser;
+    private final InvestmentRepository investmentRepository;
 
     public WithdrawalService(WithdrawalRequestRepository withdrawalRequestRepository,
                              UserService userService,
-                             SecurityCurrentUser securityCurrentUser) {
+                             SecurityCurrentUser securityCurrentUser,
+                             InvestmentRepository investmentRepository) {
         this.withdrawalRequestRepository = withdrawalRequestRepository;
         this.userService = userService;
         this.securityCurrentUser = securityCurrentUser;
+        this.investmentRepository = investmentRepository;
     }
 
     /**
-     * Creates a withdrawal request: debits the wallet atomically and persists the request.
+     * Creates a withdrawal request.
+     * If wallet balance is insufficient but withdrawable interest covers the gap,
+     * automatically credits the eligible interest to the wallet first.
      */
     @Transactional
     public WithdrawalResponse requestWithdrawal(WithdrawalRequestDto dto) {
         User user = userService.getByEmail(securityCurrentUser.email());
+        BigDecimal amount = dto.amount().setScale(4, RoundingMode.HALF_UP);
 
-        // Debit wallet atomically — throws if insufficient balance
+        // If wallet balance is not enough, auto-credit eligible interest first
+        BigDecimal walletBalance = userService.getById(user.getId()).getSaldo();
+        if (walletBalance.compareTo(amount) < 0) {
+            BigDecimal deficit = amount.subtract(walletBalance);
+            autoWithdrawEligibleInterest(user.getId(), deficit);
+        }
+
+        // Debit wallet atomically — throws if still insufficient
         userService.debitBalance(
                 user.getId(),
-                dto.amount(),
+                amount,
                 WalletTransactionType.WITHDRAW,
                 Map.of(
                         "pixKey", dto.pixKey(),
@@ -55,16 +73,46 @@ public class WithdrawalService {
 
         WithdrawalRequest request = new WithdrawalRequest();
         request.setUser(user);
-        request.setAmount(dto.amount().setScale(4, RoundingMode.HALF_UP));
+        request.setAmount(amount);
         request.setPixKey(dto.pixKey());
         request.setStatus(WithdrawalStatus.PENDING);
 
         withdrawalRequestRepository.save(request);
 
         log.info("Withdrawal requested: userId={} amount={} pixKey={}",
-                user.getId(), dto.amount(), dto.pixKey());
+                user.getId(), amount, dto.pixKey());
 
         return WithdrawalResponse.fromEntity(request);
+    }
+
+    /**
+     * Auto-credits eligible interest (D+15 passed) to the wallet to cover a withdrawal deficit.
+     */
+    private void autoWithdrawEligibleInterest(Long userId, BigDecimal deficit) {
+        List<Investment> eligible = investmentRepository
+                .findByUserIdAndStatusOrderByContractedAtDesc(userId, InvestmentStatus.ACTIVE)
+                .stream()
+                .filter(inv -> !LocalDate.now().isBefore(inv.getInterestWithdrawalDate()))
+                .filter(inv -> inv.getAccruedInterest().compareTo(BigDecimal.ZERO) > 0)
+                .toList();
+
+        BigDecimal remaining = deficit;
+        for (Investment inv : eligible) {
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+
+            BigDecimal toCredit = inv.getAccruedInterest().min(remaining);
+            inv.setAccruedInterest(inv.getAccruedInterest().subtract(toCredit).setScale(4, RoundingMode.HALF_UP));
+            investmentRepository.save(inv);
+
+            userService.creditBalance(userId, toCredit,
+                    WalletTransactionType.INTEREST_WITHDRAWAL,
+                    Map.of("investmentId", String.valueOf(inv.getId()),
+                            "plan", inv.getPlan().name(),
+                            "reason", "auto-credit for withdrawal"));
+
+            remaining = remaining.subtract(toCredit);
+            log.info("Auto-credited interest: investmentId={} amount={}", inv.getId(), toCredit);
+        }
     }
 
     @Transactional(readOnly = true)

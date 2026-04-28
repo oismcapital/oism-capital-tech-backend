@@ -122,6 +122,11 @@ public class UserService {
         return walletTransactionRepository.findLatestByUserId(userId, PageRequest.of(0, safeLimit));
     }
 
+    @Transactional(readOnly = true)
+    public List<WalletTransaction> transactionsByDateRange(Long userId, java.time.Instant from, java.time.Instant to) {
+        return walletTransactionRepository.findByUserIdAndDateRange(userId, from, to);
+    }
+
     @Transactional
     public void applyDailyYield(BigDecimal multiplier) {
         userRepository.findAll().forEach(user -> {

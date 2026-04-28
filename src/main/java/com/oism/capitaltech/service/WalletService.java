@@ -56,6 +56,16 @@ public class WalletService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<WalletTransactionResponse> statementByDate(java.time.LocalDate from, java.time.LocalDate to) {
+        User user = userService.getByEmail(securityCurrentUser.email());
+        java.time.Instant fromInstant = from.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+        java.time.Instant toInstant = to.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+        return userService.transactionsByDateRange(user.getId(), fromInstant, toInstant).stream()
+                .map(WalletTransactionResponse::fromEntity)
+                .toList();
+    }
+
     @Transactional
     public void updatePreferences(WalletPreferencesRequest request) {
         User user = userService.getByEmail(securityCurrentUser.email());

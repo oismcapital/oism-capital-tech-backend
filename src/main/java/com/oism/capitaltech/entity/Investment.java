@@ -30,6 +30,10 @@ public class Investment {
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal accruedInterest = BigDecimal.ZERO;
 
+    /** Total de juros já resgatados pelo usuário neste contrato. */
+    @Column(nullable = false, precision = 19, scale = 4)
+    private BigDecimal withdrawnInterest = BigDecimal.ZERO;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private InvestmentStatus status = InvestmentStatus.ACTIVE;
@@ -70,6 +74,13 @@ public class Investment {
 
     public BigDecimal getAccruedInterest() { return accruedInterest; }
     public void setAccruedInterest(BigDecimal accruedInterest) { this.accruedInterest = accruedInterest; }
+
+    public BigDecimal getWithdrawnInterest() { 
+        return withdrawnInterest != null ? withdrawnInterest : BigDecimal.ZERO; 
+    }
+    public void setWithdrawnInterest(BigDecimal withdrawnInterest) { 
+        this.withdrawnInterest = withdrawnInterest != null ? withdrawnInterest : BigDecimal.ZERO; 
+    }
 
     public InvestmentStatus getStatus() { return status; }
     public void setStatus(InvestmentStatus status) { this.status = status; }

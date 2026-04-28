@@ -13,6 +13,7 @@ public record InvestmentResponse(
         String planName,
         BigDecimal principal,
         BigDecimal accruedInterest,
+        BigDecimal withdrawnInterest,
         BigDecimal projectedTotalInterest,
         String status,
         LocalDateTime contractedAt,
@@ -21,7 +22,6 @@ public record InvestmentResponse(
         boolean interestWithdrawable
 ) {
     private static final BigDecimal MONTHLY_RATE = new BigDecimal("0.10");
-    private static final BigDecimal ACCRUAL_DAYS = new BigDecimal("30");
 
     public static InvestmentResponse fromEntity(Investment inv) {
         BigDecimal projected = inv.getPrincipal()
@@ -38,6 +38,7 @@ public record InvestmentResponse(
                 inv.getPlan().getDisplayName(),
                 inv.getPrincipal(),
                 inv.getAccruedInterest(),
+                inv.getWithdrawnInterest() != null ? inv.getWithdrawnInterest() : BigDecimal.ZERO,
                 projected,
                 inv.getStatus().name(),
                 inv.getContractedAt(),

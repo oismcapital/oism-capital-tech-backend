@@ -24,6 +24,9 @@ import java.util.Map;
 @Service
 public class FinanceService {
 
+    private static final BigDecimal DAILY_RATE =
+            new BigDecimal("0.10").divide(new BigDecimal("30"), 10, RoundingMode.HALF_UP);
+
     private final UserService userService;
     private final SecurityCurrentUser securityCurrentUser;
     private final InvestmentRepository investmentRepository;
@@ -56,6 +59,31 @@ public class FinanceService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(4, RoundingMode.HALF_UP);
 
+        // Withdrawable interest = accrued interest from investments past D+15
+        BigDecimal withdrawableInterest = active.stream()
+                .filter(inv -> !LocalDate.now().isBefore(inv.getInterestWithdrawalDate()))
+                .map(Investment::getAccruedInterest)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(4, RoundingMode.HALF_UP);
+
+        // Withdrawable balance = wallet balance + withdrawable interest
+        BigDecimal withdrawableBalance = user.getSaldo()
+                .add(withdrawableInterest)
+                .setScale(4, RoundingMode.HALF_UP);
+
+        // Daily profit = sum of one day's interest across all active investments within earning window
+        BigDecimal dailyProfit = active.stream()
+                .filter(inv -> {
+                    LocalDate contractDate = inv.getContractedAt().toLocalDate();
+                    LocalDate earningEnd = contractDate.plusDays(29);
+                    return !LocalDate.now().isAfter(earningEnd);
+                })
+                .map(inv -> inv.getPrincipal()
+                        .multiply(DAILY_RATE)
+                        .setScale(4, RoundingMode.HALF_UP))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(4, RoundingMode.HALF_UP);
+
         // Build performance chart from real accrued interest per investment (last 30 days)
         List<Double> points = buildPerformancePoints(user.getId(), active);
 
@@ -63,7 +91,9 @@ public class FinanceService {
                 user.getSaldo(),
                 totalInvested,
                 totalAccrued,
-                user.getLucroHoje(),
+                withdrawableInterest,
+                withdrawableBalance,
+                dailyProfit,
                 points,
                 user.isValorEscondido()
         );

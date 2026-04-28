@@ -30,13 +30,16 @@ public class InvestmentService {
     private final InvestmentRepository investmentRepository;
     private final UserService userService;
     private final SecurityCurrentUser securityCurrentUser;
+    private final com.oism.capitaltech.repository.WalletTransactionRepository walletTransactionRepository;
 
     public InvestmentService(InvestmentRepository investmentRepository,
                              UserService userService,
-                             SecurityCurrentUser securityCurrentUser) {
+                             SecurityCurrentUser securityCurrentUser,
+                             com.oism.capitaltech.repository.WalletTransactionRepository walletTransactionRepository) {
         this.investmentRepository = investmentRepository;
         this.userService = userService;
         this.securityCurrentUser = securityCurrentUser;
+        this.walletTransactionRepository = walletTransactionRepository;
     }
 
     // ── Contratar plano ──────────────────────────────────────────────────────
@@ -80,7 +83,7 @@ public class InvestmentService {
         return investmentRepository
                 .findByUserIdOrderByContractedAtDesc(user.getId())
                 .stream()
-                .map(InvestmentResponse::fromEntity)
+                .map(inv -> toResponse(inv, user.getId()))
                 .toList();
     }
 
@@ -90,8 +93,21 @@ public class InvestmentService {
         return investmentRepository
                 .findByUserIdAndStatusOrderByContractedAtDesc(user.getId(), InvestmentStatus.ACTIVE)
                 .stream()
-                .map(InvestmentResponse::fromEntity)
+                .map(inv -> toResponse(inv, user.getId()))
                 .toList();
+    }
+
+    private InvestmentResponse toResponse(Investment inv, Long userId) {
+        BigDecimal withdrawn = inv.getWithdrawnInterest();
+        if (withdrawn.compareTo(BigDecimal.ZERO) == 0) {
+            BigDecimal fromTx = walletTransactionRepository.sumWithdrawnInterestForInvestment(
+                    userId, String.valueOf(inv.getId()));
+            if (fromTx != null && fromTx.compareTo(BigDecimal.ZERO) > 0) {
+                inv.setWithdrawnInterest(fromTx.setScale(4, RoundingMode.HALF_UP));
+                investmentRepository.save(inv);
+            }
+        }
+        return InvestmentResponse.fromEntity(inv);
     }
 
     // ── Resgatar lucro (D+15) ────────────────────────────────────────────────
@@ -118,7 +134,9 @@ public class InvestmentService {
             throw new IllegalStateException("Nenhum lucro disponível para resgate");
         }
 
-        // Zera os juros acumulados e credita na Wallet
+        // Accumulate withdrawn interest and zero out accrued
+        inv.setWithdrawnInterest(
+                inv.getWithdrawnInterest().add(interest).setScale(4, RoundingMode.HALF_UP));
         inv.setAccruedInterest(BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP));
         investmentRepository.save(inv);
 
@@ -137,25 +155,69 @@ public class InvestmentService {
     @Transactional
     public void processAccrual() {
         LocalDate today = LocalDate.now();
-        // Só calcula juros para contratos dentro dos primeiros 30 dias
         LocalDateTime cutoff = today.minusDays(30).atStartOfDay();
 
         List<Investment> toProcess = investmentRepository.findActiveForAccrual(today, cutoff);
 
         for (Investment inv : toProcess) {
-            BigDecimal dailyInterest = inv.getPrincipal()
-                    .multiply(DAILY_RATE)
-                    .setScale(4, RoundingMode.HALF_UP);
-
-            inv.setAccruedInterest(inv.getAccruedInterest().add(dailyInterest));
-            inv.setLastAccrualDate(today);
-            investmentRepository.save(inv);
-
-            log.info("Accrual: investmentId={} userId={} dailyInterest={} totalAccrued={}",
-                    inv.getId(), inv.getUser().getId(), dailyInterest, inv.getAccruedInterest());
+            applyAccrualToInvestment(inv, today);
         }
 
-        log.info("Accrual diário concluído: {} contratos processados", toProcess.size());
+        log.info("Daily accrual completed: {} contracts processed", toProcess.size());
+    }
+
+    /**
+     * Catch-up accrual for a specific user on login.
+     * Calculates all missing days since last accrual date.
+     */
+    @Transactional
+    public void processAccrualForUser(Long userId) {
+        LocalDate today = LocalDate.now();
+        LocalDateTime cutoff = today.minusDays(30).atStartOfDay();
+
+        List<Investment> active = investmentRepository
+                .findByUserIdAndStatusOrderByContractedAtDesc(userId, InvestmentStatus.ACTIVE);
+
+        for (Investment inv : active) {
+            LocalDate startDate = inv.getLastAccrualDate() != null
+                    ? inv.getLastAccrualDate().plusDays(1)
+                    : inv.getContractedAt().toLocalDate();
+
+            // Only process within the 30-day earning window
+            LocalDate earningSince = inv.getContractedAt().toLocalDate();
+            LocalDate earningUntil = earningSince.plusDays(29);
+
+            if (startDate.isAfter(today) || startDate.isAfter(earningUntil)) continue;
+
+            LocalDate endDate = today.isBefore(earningUntil) ? today : earningUntil;
+
+            LocalDate cursor = startDate;
+            while (!cursor.isAfter(endDate)) {
+                BigDecimal dailyInterest = inv.getPrincipal()
+                        .multiply(DAILY_RATE)
+                        .setScale(4, RoundingMode.HALF_UP);
+                inv.setAccruedInterest(inv.getAccruedInterest().add(dailyInterest));
+                inv.setLastAccrualDate(cursor);
+                cursor = cursor.plusDays(1);
+            }
+
+            investmentRepository.save(inv);
+            log.info("Catch-up accrual: investmentId={} userId={} totalAccrued={}",
+                    inv.getId(), userId, inv.getAccruedInterest());
+        }
+    }
+
+    private void applyAccrualToInvestment(Investment inv, LocalDate today) {
+        BigDecimal dailyInterest = inv.getPrincipal()
+                .multiply(DAILY_RATE)
+                .setScale(4, RoundingMode.HALF_UP);
+
+        inv.setAccruedInterest(inv.getAccruedInterest().add(dailyInterest));
+        inv.setLastAccrualDate(today);
+        investmentRepository.save(inv);
+
+        log.info("Accrual: investmentId={} userId={} dailyInterest={} totalAccrued={}",
+                inv.getId(), inv.getUser().getId(), dailyInterest, inv.getAccruedInterest());
     }
 
     // ── Maturação automática (D+35, chamado pelo robô) ───────────────────────
