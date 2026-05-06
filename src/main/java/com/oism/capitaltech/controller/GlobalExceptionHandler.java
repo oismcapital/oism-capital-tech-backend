@@ -1,6 +1,8 @@
 package com.oism.capitaltech.controller;
 
 import com.oism.capitaltech.service.AuthService;
+import com.oism.capitaltech.service.EmailConfigService;
+import com.oism.capitaltech.service.PasswordResetService;
 import com.oism.capitaltech.service.PaymentService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +37,36 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AuthService.WrongPasswordException.class)
     public ResponseEntity<Map<String, String>> handleWrongPassword(AuthService.WrongPasswordException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(PasswordResetService.TokenNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleTokenNotFound(PasswordResetService.TokenNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(EmailConfigService.EmailConfigNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleEmailConfigNotFound(EmailConfigService.EmailConfigNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(PasswordResetService.TokenExpiredException.class)
+    public ResponseEntity<Map<String, String>> handleTokenExpired(PasswordResetService.TokenExpiredException ex) {
+        return ResponseEntity.status(HttpStatus.GONE)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(PasswordResetService.InvalidCodeException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidCode(PasswordResetService.InvalidCodeException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(Map.of("error", ex.getMessage(), "remainingAttempts", ex.getRemainingAttempts()));
+    }
+
+    @ExceptionHandler(PasswordResetService.MaxAttemptsExceededException.class)
+    public ResponseEntity<Map<String, String>> handleMaxAttempts(PasswordResetService.MaxAttemptsExceededException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(Map.of("error", ex.getMessage()));
     }
 
